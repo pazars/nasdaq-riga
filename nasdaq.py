@@ -1,13 +1,8 @@
 import os
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import date, datetime
-from bs4 import BeautifulSoup
 from pandas_gbq import to_gbq
 from dotenv import load_dotenv
 
@@ -15,10 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 url = "https://nasdaqbaltic.com/statistics/lv/bonds"
-
-chrome_options = Options()
-chrome_options.add_argument("--headless=new")
-driver = webdriver.Chrome(options=chrome_options)
 
 column_name_map = {
     "Nosaukums": "name",
@@ -41,42 +32,19 @@ column_name_map = {
 }
 
 try:
-    print(f"Opening website: {url}")
-    driver.get(url)
+    print(f"Fetching website content from: {url}")
+    # Use requests to get the HTML content of the page
+    response = requests.get(url)
+    response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
 
-    # Handle cookie consent
-    try:
-        cookie_button_xpath = "//button[contains(text(), 'Piekrītu') or contains(text(), 'Accept') or contains(text(), 'OK')]"
-        cookie_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, cookie_button_xpath))
-        )
-        cookie_button.click()
-        time.sleep(1)
-    except Exception:
-        print("No cookie popup found")
+    # Parse the HTML with BeautifulSoup
+    soup = BeautifulSoup(response.content, "lxml")
 
-    wait = WebDriverWait(driver, 20)
+    # Find the table element using its class name
+    table = soup.find("table", class_="table-BABT_3")
 
-    # Click "Netīrā cena" button
-    button_xpath = "//button[text()='Netīrā cena']"
-    button = wait.until(EC.element_to_be_clickable((By.XPATH, button_xpath)))
-    button.click()
-    print("Clicked 'Netīrā cena'")
-
-    wait = WebDriverWait(driver, 50)
-
-    # Locate the table element directly
-    table_element = wait.until(
-        EC.presence_of_element_located(
-            (By.XPATH, "//table[contains(@class,'tablesaw')]")
-        )
-    )
-
-    # Extract HTML of just that table
-    table_html = table_element.get_attribute("outerHTML")
-
-    soup = BeautifulSoup(table_html, "lxml")
-    table = soup.find("table")
+    if not table:
+        raise ValueError("Could not find the bonds table on the page.")
 
     # Extract headers and handle duplicates
     headers = []
@@ -145,9 +113,6 @@ try:
 except Exception as e:
     print(f"An error occurred: {e}")
 
-finally:
-    print("Closing the browser")
-    driver.quit()
 
 # Refers to Google Sheets cells I had made before
 A3 = df["Nomināls"]  # bond value
@@ -184,7 +149,7 @@ df["end_profit_after_tax"] = V3
 df["yearly_profit_pct_before_tax"] = U3
 df["yearly_profit_pct_after_tax"] = W3
 
-df['timestamp'] = datetime.now()
+df["timestamp"] = datetime.now()
 
 df = df.rename(columns=column_name_map)
 
@@ -195,9 +160,4 @@ project_id = os.getenv("GCP_PROJECT_ID")
 table_id = os.getenv("BIG_QUERY_TABLE_ID")
 
 # Append the DataFrame to the BigQuery table
-to_gbq(
-    df,
-    table_id,
-    project_id=project_id,
-    if_exists='append'
-)
+to_gbq(df, table_id, project_id=project_id, if_exists="append")
