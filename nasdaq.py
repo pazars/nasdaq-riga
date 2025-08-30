@@ -4,10 +4,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import date, datetime
 from pandas_gbq import to_gbq
-from dotenv import load_dotenv
 
-
-load_dotenv()
 
 url = "https://nasdaqbaltic.com/statistics/lv/bonds"
 

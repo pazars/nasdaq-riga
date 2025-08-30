@@ -1,4 +1,3 @@
 pandas
 beautifulsoup4
 pandas-gbq
-python-dotenv
